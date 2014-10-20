@@ -207,13 +207,26 @@ void report_grbl_settings() {
         case X_AXIS: printPgmString(PSTR("x")); break;
         case Y_AXIS: printPgmString(PSTR("y")); break;
         case Z_AXIS: printPgmString(PSTR("z")); break;
+        case A_AXIS: printPgmString(PSTR("a")); break;
+        case B_AXIS: printPgmString(PSTR("b")); break;
+        case C_AXIS: printPgmString(PSTR("c")); break;
       }
-      switch (set_idx) {
-        case 0: printPgmString(PSTR(", step/mm")); break;
-        case 1: printPgmString(PSTR(" max rate, mm/min")); break;
-        case 2: printPgmString(PSTR(" accel, mm/sec^2")); break;
-        case 3: printPgmString(PSTR(" max travel, mm")); break;
-      }      
+      if (idx >= 3 ) {
+		  switch (set_idx) {
+			case 0: printPgmString(PSTR(", step/deg")); break;
+			case 1: printPgmString(PSTR(" max rate, deg/min")); break;
+			case 2: printPgmString(PSTR(" accel, deg/sec^2")); break;
+			case 3: printPgmString(PSTR(" max travel, deg")); break;
+		  }   
+      } else {
+		  switch (set_idx) {
+			case 0: printPgmString(PSTR(", step/mm")); break;
+			case 1: printPgmString(PSTR(" max rate, mm/min")); break;
+			case 2: printPgmString(PSTR(" accel, mm/sec^2")); break;
+			case 3: printPgmString(PSTR(" max travel, mm")); break;
+		  }    	  
+      }
+      
       printPgmString(PSTR(")\r\n"));
     }
     val += AXIS_SETTINGS_INCREMENT;
