@@ -294,13 +294,19 @@ ISR(TIMER1_COMPA_vect)
   if (busy) { return; } // The busy-flag is used to avoid reentering this interrupt
   
   // Set the direction pins a couple of nanoseconds before we step the steppers
-  DIRECTION_PORT = (DIRECTION_PORT & ~DIRECTION_MASK) | (st.dir_outbits & DIRECTION_MASK);
+  X_DIRECTION_PORT = (X_DIRECTION_PORT & ~bit(X_DIRECTION_BIT)) | (((bit(X_AXIS) & st.dir_outbits) >> X_AXIS) << X_DIRECTION_BIT); 
+  Y_DIRECTION_PORT = (Y_DIRECTION_PORT & ~bit(Y_DIRECTION_BIT)) | (((bit(Y_AXIS) & st.dir_outbits) >> Y_AXIS) << Y_DIRECTION_BIT);
+  Z_DIRECTION_PORT = (Z_DIRECTION_PORT & ~bit(Z_DIRECTION_BIT)) | (((bit(Z_AXIS) & st.dir_outbits) >> Z_AXIS) << Z_DIRECTION_BIT);
 
   // Then pulse the stepping pins
   #ifdef STEP_PULSE_DELAY
     st.step_bits = (STEP_PORT & ~STEP_MASK) | st.step_outbits; // Store out_bits to prevent overwriting.
   #else  // Normal operation
-    STEP_PORT = (STEP_PORT & ~STEP_MASK) | st.step_outbits;
+    
+    X_STEP_PORT = (X_STEP_PORT & ~bit(X_STEP_BIT)) | (((bit(X_AXIS) & st.step_outbits) >> X_AXIS) << X_STEP_BIT); 
+    Y_STEP_PORT = (Y_STEP_PORT & ~bit(Y_STEP_BIT)) | (((bit(Y_AXIS) & st.step_outbits) >> Y_AXIS) << Y_STEP_BIT);
+    Z_STEP_PORT = (Z_STEP_PORT & ~bit(Z_STEP_BIT)) | (((bit(Z_AXIS) & st.step_outbits) >> Z_AXIS) << Z_STEP_BIT);
+    
   #endif  
 
   // Enable step pulse reset timer so that The Stepper Port Reset Interrupt can reset the signal after
@@ -370,9 +376,9 @@ ISR(TIMER1_COMPA_vect)
     st.counter_x += st.exec_block->steps[X_AXIS];
   #endif  
   if (st.counter_x > st.exec_block->step_event_count) {
-    st.step_outbits |= (1<<X_STEP_BIT);
+    st.step_outbits |= (1<<X_AXIS);
     st.counter_x -= st.exec_block->step_event_count;
-    if (st.exec_block->direction_bits & (1<<X_DIRECTION_BIT)) { sys.position[X_AXIS]--; }
+    if (st.exec_block->direction_bits & (1<<X_AXIS)) { sys.position[X_AXIS]--; }
     else { sys.position[X_AXIS]++; }
   }
   #ifdef ADAPTIVE_MULTI_AXIS_STEP_SMOOTHING
@@ -381,9 +387,9 @@ ISR(TIMER1_COMPA_vect)
     st.counter_y += st.exec_block->steps[Y_AXIS];
   #endif    
   if (st.counter_y > st.exec_block->step_event_count) {
-    st.step_outbits |= (1<<Y_STEP_BIT);
+    st.step_outbits |= (1<<Y_AXIS);
     st.counter_y -= st.exec_block->step_event_count;
-    if (st.exec_block->direction_bits & (1<<Y_DIRECTION_BIT)) { sys.position[Y_AXIS]--; }
+    if (st.exec_block->direction_bits & (1<<Y_AXIS)) { sys.position[Y_AXIS]--; }
     else { sys.position[Y_AXIS]++; }
   }
   #ifdef ADAPTIVE_MULTI_AXIS_STEP_SMOOTHING
@@ -392,9 +398,9 @@ ISR(TIMER1_COMPA_vect)
     st.counter_z += st.exec_block->steps[Z_AXIS];
   #endif  
   if (st.counter_z > st.exec_block->step_event_count) {
-    st.step_outbits |= (1<<Z_STEP_BIT);
+    st.step_outbits |= (1<<Z_AXIS);
     st.counter_z -= st.exec_block->step_event_count;
-    if (st.exec_block->direction_bits & (1<<Z_DIRECTION_BIT)) { sys.position[Z_AXIS]--; }
+    if (st.exec_block->direction_bits & (1<<Z_AXIS)) { sys.position[Z_AXIS]--; }
     else { sys.position[Z_AXIS]++; }
   }  
 
@@ -428,7 +434,9 @@ ISR(TIMER1_COMPA_vect)
 ISR(TIMER0_OVF_vect)
 {
   // Reset stepping pins (leave the direction pins)
-  STEP_PORT = (STEP_PORT & ~STEP_MASK) | (step_port_invert_mask & STEP_MASK); 
+  X_STEP_PORT = (X_STEP_PORT & ~bit(X_STEP_BIT)) | (((bit(X_AXIS) & step_port_invert_mask) >> X_AXIS) << X_STEP_BIT); 
+  Y_STEP_PORT = (Y_STEP_PORT & ~bit(Y_STEP_BIT)) | (((bit(Y_AXIS) & step_port_invert_mask) >> Y_AXIS) << Y_STEP_BIT);
+  Z_STEP_PORT = (Z_STEP_PORT & ~bit(Z_STEP_BIT)) | (((bit(Z_AXIS) & step_port_invert_mask) >> Z_AXIS) << Z_STEP_BIT);
   TCCR0B = 0; // Disable Timer0 to prevent re-entering this interrupt when it's not needed. 
 }
 #ifdef STEP_PULSE_DELAY
@@ -476,8 +484,14 @@ void st_reset()
   st_generate_step_dir_invert_masks();
       
   // Initialize step and direction port pins.
-  STEP_PORT = (STEP_PORT & ~STEP_MASK) | step_port_invert_mask;
-  DIRECTION_PORT = (DIRECTION_PORT & ~DIRECTION_MASK) | dir_port_invert_mask;
+  X_STEP_PORT = (X_STEP_PORT & ~bit(X_STEP_BIT)) | (((bit(X_AXIS) & step_port_invert_mask) >> X_AXIS) << X_STEP_BIT); 
+  Y_STEP_PORT = (Y_STEP_PORT & ~bit(Y_STEP_BIT)) | (((bit(Y_AXIS) & step_port_invert_mask) >> Y_AXIS) << Y_STEP_BIT);
+  Z_STEP_PORT = (Z_STEP_PORT & ~bit(Z_STEP_BIT)) | (((bit(Z_AXIS) & step_port_invert_mask) >> Z_AXIS) << Z_STEP_BIT);
+  
+  X_DIRECTION_PORT = (X_DIRECTION_PORT & ~bit(X_DIRECTION_BIT)) | (((bit(X_AXIS) & dir_port_invert_mask) >> X_AXIS) << X_DIRECTION_BIT);
+  Y_DIRECTION_PORT = (Y_DIRECTION_PORT & ~bit(Y_DIRECTION_BIT)) | (((bit(Y_AXIS) & dir_port_invert_mask) >> Y_AXIS) << Y_DIRECTION_BIT);
+  Z_DIRECTION_PORT = (Z_DIRECTION_PORT & ~bit(Z_DIRECTION_BIT)) | (((bit(Z_AXIS) & dir_port_invert_mask) >> Z_AXIS) << Z_DIRECTION_BIT);
+  
 }
 
 
@@ -485,9 +499,15 @@ void st_reset()
 void stepper_init()
 {
   // Configure step and direction interface pins
-  STEP_DDR |= STEP_MASK;
-  STEPPERS_DISABLE_DDR |= 1<<STEPPERS_DISABLE_BIT;
-  DIRECTION_DDR |= DIRECTION_MASK;
+  X_STEP_DDR |= bit(X_STEP_BIT);
+  Y_STEP_DDR |= bit(Y_STEP_BIT);
+  Z_STEP_DDR |= bit(Z_STEP_BIT);
+  
+  STEPPERS_DISABLE_DDR |= STEPPERS_DISABLE_MASK;
+  
+  X_DIRECTION_DDR |= bit(X_DIRECTION_BIT);
+  Y_DIRECTION_DDR |= bit(Y_DIRECTION_BIT);
+  Z_DIRECTION_DDR |= bit(Z_DIRECTION_BIT);
 
   // Configure Timer 1: Stepper Driver Interrupt
   TCCR1B &= ~(1<<WGM13); // waveform generation = 0100 = CTC

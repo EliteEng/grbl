@@ -200,7 +200,7 @@ void limits_go_home(uint8_t cycle_mask)
       st_prep_buffer(); // Check and prep segment buffer. NOTE: Should take no longer than 200us.
       // Check only for user reset. No time to run protocol_execute_runtime() in this loop.
       if (sys.execute & EXEC_RESET) { protocol_execute_runtime(); return; }
-    } while (STEP_MASK & axislock);
+    } while ((bit(X_AXIS) | bit(Y_AXIS) | bit(Z_AXIS)) & axislock);
     
     st_reset(); // Immediately force kill steppers and reset step segment buffer.
     plan_reset(); // Reset planner buffer. Zero planner positions. Ensure homing motion is cleared.
