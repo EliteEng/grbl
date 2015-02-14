@@ -29,10 +29,18 @@
 
 
 #ifndef RX_BUFFER_SIZE
-  #define RX_BUFFER_SIZE 128
+  #ifdef atmega2560
+    #define RX_BUFFER_SIZE 256
+  #else
+    #define RX_BUFFER_SIZE 128
+  #endif
 #endif
 #ifndef TX_BUFFER_SIZE
-  #define TX_BUFFER_SIZE 64
+  #ifdef atmega2560
+    #define TX_BUFFER_SIZE 128
+  #else
+    #define TX_BUFFER_SIZE 64
+  #endif
 #endif
 
 #define SERIAL_NO_DATA 0xff

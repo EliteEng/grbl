@@ -133,7 +133,7 @@ void limits_go_home(uint8_t cycle_mask)
   for (idx=0; idx<N_AXIS; idx++) {  
     // Initialize limit and step pin masks
     limit_pin[idx] = get_limit_pin_mask(idx);
-    step_pin[idx] = get_step_pin_mask(idx);
+    step_pin[idx] = bit(idx);
     #ifdef COREXY    
       if ((idx==A_MOTOR)||(idx==B_MOTOR)) { step_pin[idx] = (get_step_pin_mask(X_AXIS)|get_step_pin_mask(Y_AXIS)); } 
     #endif
@@ -207,7 +207,7 @@ void limits_go_home(uint8_t cycle_mask)
         protocol_execute_realtime();
         return;
       }
-    } while (STEP_MASK & axislock);
+    } while ((bit(X_AXIS) | bit(Y_AXIS) | bit(Z_AXIS)) & axislock);
     
     st_reset(); // Immediately force kill steppers and reset step segment buffer.
     plan_reset(); // Reset planner buffer. Zero planner positions. Ensure homing motion is cleared.

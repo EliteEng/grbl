@@ -3,6 +3,7 @@
   Part of Grbl v0.9
 
   Copyright (c) 2012-2015 Sungeun K. Jeon
+  Copyright (c) 2015 Rob Brown
 
   Grbl is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -31,9 +32,18 @@ void spindle_init()
 {    
   // On the Uno, spindle enable and PWM are shared. Other CPUs have seperate enable pin.
   #ifdef VARIABLE_SPINDLE
-    SPINDLE_PWM_DDR |= (1<<SPINDLE_PWM_BIT); // Configure as PWM output pin.
-    #ifndef CPU_MAP_ATMEGA328P 
+    #ifdef CPU_MAP_ATMEGA328P
+      SPINDLE_PWM_DDR |= (1<<SPINDLE_PWM_BIT); // Configure as PWM output pin.
+      TCCR2A = (1<<COM2A1) | (1<<WGM21) | (1<<WGM20);
+      TCCR2B = (TCCR2B & 0xF8) | 0x02; // set to 1/8 Prescaler
+      OCR2A = 0;
+    #else
+      SPINDLE_PWM_DDR |= (1<<SPINDLE_PWM_BIT); // Configure as PWM output pin.
       SPINDLE_ENABLE_DDR |= (1<<SPINDLE_ENABLE_BIT); // Configure as output pin.
+      TCCR4A = (1<<COM4B1) | (1<<WGM41) | (1<<WGM40);
+      TCCR4B = (TCCR4B & 0xF8) | 0x02 | (1<<WGM42) | (1<<WGM43); // set to 1/8 Prescaler
+      OCR4A = 0xFFFF; // set the top 16bit value
+      OCR4B = 0;
     #endif     
   #else
     SPINDLE_ENABLE_DDR |= (1<<SPINDLE_ENABLE_BIT); // Configure as output pin.
@@ -47,8 +57,10 @@ void spindle_stop()
 {
   // On the Uno, spindle enable and PWM are shared. Other CPUs have seperate enable pin.
   #ifdef VARIABLE_SPINDLE
-    TCCRA_REGISTER &= ~(1<<COMB_BIT); // Disable PWM. Output voltage is zero.
-    #ifndef CPU_MAP_ATMEGA328P 
+    #ifdef CPU_MAP_ATMEGA328P
+	    TCCR2A &= ~(1<<COM2A1); // Disable PWM. Output voltage is zero.
+    #else
+	    TCCR4A &= ~(1<<COM4B1); // Disable PWM. Output voltage is zero. 
       SPINDLE_ENABLE_PORT &= ~(1<<SPINDLE_ENABLE_BIT); // Set pin to low.
     #endif
   #else
@@ -74,30 +86,28 @@ void spindle_set_state(uint8_t state, float rpm)
 
     #ifdef VARIABLE_SPINDLE
       // TODO: Install the optional capability for frequency-based output for servos.
-      #ifdef CPU_MAP_ATMEGA2560
-      	TCCRA_REGISTER = (1<<COMB_BIT) | (1<<WAVE1_REGISTER) | (1<<WAVE0_REGISTER);
-        TCCRB_REGISTER = (TCCRB_REGISTER & 0b11111000) | 0x02 | (1<<WAVE2_REGISTER) | (1<<WAVE3_REGISTER); // set to 1/8 Prescaler
-        OCR4A = 0xFFFF; // set the top 16bit value
-        uint16_t current_pwm;
-      #else
-        TCCRA_REGISTER = (1<<COMB_BIT) | (1<<WAVE1_REGISTER) | (1<<WAVE0_REGISTER);
-        TCCRB_REGISTER = (TCCRB_REGISTER & 0b11111000) | 0x02; // set to 1/8 Prescaler
-        uint8_t current_pwm;
-      #endif
-
+    
       #define SPINDLE_RPM_RANGE (SPINDLE_MAX_RPM-SPINDLE_MIN_RPM)
       if ( rpm < SPINDLE_MIN_RPM ) { rpm = 0; } 
       else { 
         rpm -= SPINDLE_MIN_RPM; 
         if ( rpm > SPINDLE_RPM_RANGE ) { rpm = SPINDLE_RPM_RANGE; } // Prevent integer overflow
       }
-      current_pwm = floor( rpm*(PWM_MAX_VALUE/SPINDLE_RPM_RANGE) + 0.5);
+    
+      #ifdef CPU_MAP_ATMEGA328P
+        uint8_t current_pwm = floor( rpm*(255.0/SPINDLE_RPM_RANGE) + 0.5);
+      #else
+        uint16_t current_pwm = floor( rpm*(65535.0/SPINDLE_RPM_RANGE) + 0.5);;
+      #endif
+
       #ifdef MINIMUM_SPINDLE_PWM
         if (current_pwm < MINIMUM_SPINDLE_PWM) { current_pwm = MINIMUM_SPINDLE_PWM; }
       #endif
-      OCR_REGISTER = current_pwm; // Set PWM pin output
-    
-      #ifdef CPU_MAP_ATMEGA2560 // On the Uno, spindle enable and PWM are shared.
+        
+      #ifdef CPU_MAP_ATMEGA328P // On the Uno, spindle enable and PWM are shared. 
+        OCR2A = current_pwm; // Set PWM pin output
+      #else 
+        OCR4B = current_pwm; // Set PWM pin output
         SPINDLE_ENABLE_PORT |= (1<<SPINDLE_ENABLE_BIT);
       #endif
     #else   

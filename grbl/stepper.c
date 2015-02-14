@@ -3,6 +3,7 @@
   Part of Grbl v0.9
 
   Copyright (c) 2012-2015 Sungeun K. Jeon
+  Copyright (c) 2015 Rob Brown
   
   Grbl is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -26,6 +27,8 @@
 
 #include "grbl.h"
 
+// Declare cpu variable structure
+cpu_t cpu;
 
 // Some useful constants.
 #define DT_SEGMENT (1.0/(ACCELERATION_TICKS_PER_SECOND*60.0)) // min/segment 
@@ -188,8 +191,25 @@ static st_prep_t prep;
 void st_wake_up() 
 {
   // Enable stepper drivers.
-  if (bit_istrue(settings.flags,BITFLAG_INVERT_ST_ENABLE)) { STEPPERS_DISABLE_PORT |= (1<<STEPPERS_DISABLE_BIT); }
-  else { STEPPERS_DISABLE_PORT &= ~(1<<STEPPERS_DISABLE_BIT); }
+  if (bit_istrue(settings.flags,BITFLAG_INVERT_ST_ENABLE)) { 
+    #ifdef MULTI_STEPPER_DISABLE   
+     uint8_t iaxis;
+     for (iaxis=0; iaxis<N_AXIS; iaxis++) {
+        *cpu.stepper_disable_port[iaxis] |= bit(cpu.stepper_disable_bit[iaxis]);
+     }
+    #else
+      STEPPERS_DISABLE_PORT |= (1<<STEPPERS_DISABLE_BIT); 
+    #endif
+  } else { 
+    #ifdef MULTI_STEPPER_DISABLE   
+      uint8_t iaxis;
+      for (iaxis=0; iaxis<N_AXIS; iaxis++) {
+        *cpu.stepper_disable_port[iaxis] &= ~bit(cpu.stepper_disable_bit[iaxis]);
+      }
+    #else
+      STEPPERS_DISABLE_PORT &= ~(1<<STEPPERS_DISABLE_BIT);
+    #endif
+  }
 
   if (sys.state & (STATE_CYCLE | STATE_HOMING)){
     // Initialize stepper output bits
@@ -230,8 +250,25 @@ void st_go_idle()
     pin_state = true; // Override. Disable steppers.
   }
   if (bit_istrue(settings.flags,BITFLAG_INVERT_ST_ENABLE)) { pin_state = !pin_state; } // Apply pin invert.
-  if (pin_state) { STEPPERS_DISABLE_PORT |= (1<<STEPPERS_DISABLE_BIT); }
-  else { STEPPERS_DISABLE_PORT &= ~(1<<STEPPERS_DISABLE_BIT); }
+  if (pin_state) { 
+    #ifdef MULTI_STEPPER_DISABLE   
+     uint8_t iaxis;
+     for (iaxis=0; iaxis<N_AXIS; iaxis++) {
+        *cpu.stepper_disable_port[iaxis] |= bit(cpu.stepper_disable_bit[iaxis]);
+     }
+    #else
+      STEPPERS_DISABLE_PORT |= (1<<STEPPERS_DISABLE_BIT); 
+    #endif
+  } else { 
+    #ifdef MULTI_STEPPER_DISABLE 
+      uint8_t iaxis;  
+      for (iaxis=0; iaxis<N_AXIS; iaxis++) {
+        *cpu.stepper_disable_port[iaxis] &= ~bit(cpu.stepper_disable_bit[iaxis]);
+      }
+    #else
+      STEPPERS_DISABLE_PORT &= ~(1<<STEPPERS_DISABLE_BIT);
+    #endif 
+  }
 }
 
 
@@ -289,13 +326,18 @@ ISR(TIMER1_COMPA_vect)
   if (busy) { return; } // The busy-flag is used to avoid reentering this interrupt
   
   // Set the direction pins a couple of nanoseconds before we step the steppers
-  DIRECTION_PORT = (DIRECTION_PORT & ~DIRECTION_MASK) | (st.dir_outbits & DIRECTION_MASK);
-
+  uint8_t iaxis;
+     for (iaxis=0; iaxis<N_AXIS; iaxis++) {
+        *cpu.direction_port[iaxis] = (*cpu.direction_port[iaxis] & ~bit(cpu.direction_bit[iaxis])) | (((bit(iaxis) & st.dir_outbits) >> iaxis) << cpu.direction_bit[iaxis]);
+     }
+  
   // Then pulse the stepping pins
   #ifdef STEP_PULSE_DELAY
-    st.step_bits = (STEP_PORT & ~STEP_MASK) | st.step_outbits; // Store out_bits to prevent overwriting.
+    st.step_bits = st.step_outbits; // Store out_bits to prevent overwriting.
   #else  // Normal operation
-    STEP_PORT = (STEP_PORT & ~STEP_MASK) | st.step_outbits;
+    for (iaxis=0; iaxis<N_AXIS; iaxis++) {
+       *cpu.step_port[iaxis] = (*cpu.step_port[iaxis] & ~bit(cpu.step_bit[iaxis])) | (((bit(iaxis) & st.step_outbits) >> iaxis) << cpu.step_bit[iaxis]);
+    }
   #endif  
 
   // Enable step pulse reset timer so that The Stepper Port Reset Interrupt can reset the signal after
@@ -338,9 +380,9 @@ ISR(TIMER1_COMPA_vect)
 
       #ifdef ADAPTIVE_MULTI_AXIS_STEP_SMOOTHING
         // With AMASS enabled, adjust Bresenham axis increment counters according to AMASS level.
-        st.steps[X_AXIS] = st.exec_block->steps[X_AXIS] >> st.exec_segment->amass_level;
-        st.steps[Y_AXIS] = st.exec_block->steps[Y_AXIS] >> st.exec_segment->amass_level;
-        st.steps[Z_AXIS] = st.exec_block->steps[Z_AXIS] >> st.exec_segment->amass_level;
+      for (iaxis=0; iaxis<N_AXIS; iaxis++) {
+        st.steps[iaxis] = st.exec_block->steps[iaxis] >> st.exec_segment->amass_level;
+      }
       #endif
       
     } else {
@@ -359,39 +401,19 @@ ISR(TIMER1_COMPA_vect)
   st.step_outbits = 0; 
 
   // Execute step displacement profile by Bresenham line algorithm
-  #ifdef ADAPTIVE_MULTI_AXIS_STEP_SMOOTHING
-    st.counter_x += st.steps[X_AXIS];
-  #else
-    st.counter_x += st.exec_block->steps[X_AXIS];
-  #endif  
-  if (st.counter_x > st.exec_block->step_event_count) {
-    st.step_outbits |= (1<<X_STEP_BIT);
-    st.counter_x -= st.exec_block->step_event_count;
-    if (st.exec_block->direction_bits & (1<<X_DIRECTION_BIT)) { sys.position[X_AXIS]--; }
-    else { sys.position[X_AXIS]++; }
-  }
-  #ifdef ADAPTIVE_MULTI_AXIS_STEP_SMOOTHING
-    st.counter_y += st.steps[Y_AXIS];
-  #else
-    st.counter_y += st.exec_block->steps[Y_AXIS];
-  #endif    
-  if (st.counter_y > st.exec_block->step_event_count) {
-    st.step_outbits |= (1<<Y_STEP_BIT);
-    st.counter_y -= st.exec_block->step_event_count;
-    if (st.exec_block->direction_bits & (1<<Y_DIRECTION_BIT)) { sys.position[Y_AXIS]--; }
-    else { sys.position[Y_AXIS]++; }
-  }
-  #ifdef ADAPTIVE_MULTI_AXIS_STEP_SMOOTHING
-    st.counter_z += st.steps[Z_AXIS];
-  #else
-    st.counter_z += st.exec_block->steps[Z_AXIS];
-  #endif  
-  if (st.counter_z > st.exec_block->step_event_count) {
-    st.step_outbits |= (1<<Z_STEP_BIT);
-    st.counter_z -= st.exec_block->step_event_count;
-    if (st.exec_block->direction_bits & (1<<Z_DIRECTION_BIT)) { sys.position[Z_AXIS]--; }
-    else { sys.position[Z_AXIS]++; }
-  }  
+  for (iaxis=0; iaxis<N_AXIS; iaxis++) {
+	  #ifdef ADAPTIVE_MULTI_AXIS_STEP_SMOOTHING
+		st.counter_x += st.steps[iaxis];
+	  #else
+		st.counter_x += st.exec_block->steps[iaxis];
+	  #endif  
+	  if (st.counter_x > st.exec_block->step_event_count) {
+		st.step_outbits |= (1<<iaxis);
+		st.counter_x -= st.exec_block->step_event_count;
+		if (st.exec_block->direction_bits & (1<<iaxis)) { sys.position[iaxis]--; }
+		else { sys.position[iaxis]++; }
+	  }
+  } 
 
   // During a homing cycle, lock out and prevent desired axes from moving.
   if (sys.state == STATE_HOMING) { st.step_outbits &= sys.homing_axis_lock; }   
@@ -423,7 +445,10 @@ ISR(TIMER1_COMPA_vect)
 ISR(TIMER0_OVF_vect)
 {
   // Reset stepping pins (leave the direction pins)
-  STEP_PORT = (STEP_PORT & ~STEP_MASK) | (step_port_invert_mask & STEP_MASK); 
+  uint8_t iaxis;
+	for (iaxis=0; iaxis<N_AXIS; iaxis++) {
+	   *cpu.step_port[iaxis] = (*cpu.step_port[iaxis] & ~bit(cpu.step_bit[iaxis])) | (((bit(iaxis) & step_port_invert_mask) >> iaxis) << cpu.step_bit[iaxis]);
+	}
   TCCR0B = 0; // Disable Timer0 to prevent re-entering this interrupt when it's not needed. 
 }
 #ifdef STEP_PULSE_DELAY
@@ -434,7 +459,10 @@ ISR(TIMER0_OVF_vect)
   // st_wake_up() routine.
   ISR(TIMER0_COMPA_vect) 
   { 
-    STEP_PORT = st.step_bits; // Begin step pulse.
+	  uint8_t iaxis;
+	  	for (iaxis=0; iaxis<N_AXIS; iaxis++) {
+	  	   *cpu.step_port[iaxis] = (*cpu.step_port[iaxis] & ~bit(cpu.step_bit[iaxis])) | (((bit(iaxis) & st.step_bits) >> iaxis) << cpu.step_bit[iaxis]);
+	  	}  
   }
 #endif
 
@@ -446,8 +474,8 @@ void st_generate_step_dir_invert_masks()
   step_port_invert_mask = 0;
   dir_port_invert_mask = 0;
   for (idx=0; idx<N_AXIS; idx++) {
-    if (bit_istrue(settings.step_invert_mask,bit(idx))) { step_port_invert_mask |= get_step_pin_mask(idx); }
-    if (bit_istrue(settings.dir_invert_mask,bit(idx))) { dir_port_invert_mask |= get_direction_pin_mask(idx); }
+    if (bit_istrue(settings.step_invert_mask,bit(idx))) { step_port_invert_mask |= bit(idx); }
+    if (bit_istrue(settings.dir_invert_mask,bit(idx))) { dir_port_invert_mask |= bit(idx); }
   }
 }
 
@@ -471,18 +499,33 @@ void st_reset()
   st_generate_step_dir_invert_masks();
       
   // Initialize step and direction port pins.
-  STEP_PORT = (STEP_PORT & ~STEP_MASK) | step_port_invert_mask;
-  DIRECTION_PORT = (DIRECTION_PORT & ~DIRECTION_MASK) | dir_port_invert_mask;
+  uint8_t iaxis;
+  	for (iaxis=0; iaxis<N_AXIS; iaxis++) {
+  	   *cpu.step_port[iaxis] = (*cpu.step_port[iaxis] & ~bit(cpu.step_bit[iaxis])) | (((bit(iaxis) & step_port_invert_mask) >> iaxis) << cpu.step_bit[iaxis]);
+  	   *cpu.direction_port[iaxis] = (*cpu.direction_port[iaxis] & ~bit(cpu.direction_bit[iaxis])) | (((bit(iaxis) & dir_port_invert_mask) >> iaxis) << cpu.direction_bit[iaxis]);
+  	}  
 }
 
 
 // Initialize and start the stepper motor subsystem
 void stepper_init()
 {
-  // Configure step and direction interface pins
-  STEP_DDR |= STEP_MASK;
-  STEPPERS_DISABLE_DDR |= 1<<STEPPERS_DISABLE_BIT;
-  DIRECTION_DDR |= DIRECTION_MASK;
+	cpu_init();      // Initialize cpu struct
+	
+	// Configure step and direction interface pins
+	uint8_t iaxis;
+  	for (iaxis=0; iaxis<N_AXIS; iaxis++) {
+  	   *cpu.step_ddr[iaxis] |= bit(cpu.step_bit[iaxis]);
+  	   *cpu.direction_ddr[iaxis] |= bit(cpu.direction_bit[iaxis]);
+  	}
+  
+  #ifdef MULTI_STEPPER_DISABLE   
+    for (iaxis=0; iaxis<N_AXIS; iaxis++) {
+      *cpu.stepper_disable_ddr[iaxis] |= bit(cpu.stepper_disable_bit[iaxis]);
+    }
+  #else
+    STEPPERS_DISABLE_DDR |= (1<<STEPPERS_DISABLE_BIT);  
+  #endif
 
   // Configure Timer 1: Stepper Driver Interrupt
   TCCR1B &= ~(1<<WGM13); // waveform generation = 0100 = CTC
@@ -556,17 +599,19 @@ void st_prep_buffer()
         st_prep_block = &st_block_buffer[prep.st_block_index];
         st_prep_block->direction_bits = pl_block->direction_bits;
         #ifndef ADAPTIVE_MULTI_AXIS_STEP_SMOOTHING
-          st_prep_block->steps[X_AXIS] = pl_block->steps[X_AXIS];
-          st_prep_block->steps[Y_AXIS] = pl_block->steps[Y_AXIS];
-          st_prep_block->steps[Z_AXIS] = pl_block->steps[Z_AXIS];
+        uint8_t iaxis;
+        for (iaxis=0; iaxis<N_AXIS; iaxis++) {
+          st_prep_block->steps[iaxis] = pl_block->steps[iaxis];
+        }
           st_prep_block->step_event_count = pl_block->step_event_count;
         #else
           // With AMASS enabled, simply bit-shift multiply all Bresenham data by the max AMASS 
           // level, such that we never divide beyond the original data anywhere in the algorithm.
           // If the original data is divided, we can lose a step from integer roundoff.
-          st_prep_block->steps[X_AXIS] = pl_block->steps[X_AXIS] << MAX_AMASS_LEVEL;
-          st_prep_block->steps[Y_AXIS] = pl_block->steps[Y_AXIS] << MAX_AMASS_LEVEL;
-          st_prep_block->steps[Z_AXIS] = pl_block->steps[Z_AXIS] << MAX_AMASS_LEVEL;
+          uint8_t iaxis;
+          for (iaxis=0; iaxis<N_AXIS; iaxis++) {
+            st_prep_block->steps[iaxis] = pl_block->steps[iaxis] << MAX_AMASS_LEVEL;
+          }
           st_prep_block->step_event_count = pl_block->step_event_count << MAX_AMASS_LEVEL;
         #endif
         

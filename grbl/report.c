@@ -357,6 +357,12 @@ void report_build_info(char *line)
 {
   printPgmString(PSTR("[" GRBL_VERSION "." GRBL_VERSION_BUILD ":"));
   printString(line);
+  printPgmString(PSTR("] [RX:"));
+  print_uint8_base10(RX_BUFFER_SIZE);
+  printPgmString(PSTR("] [TX:"));
+  print_uint8_base10(TX_BUFFER_SIZE);
+  printPgmString(PSTR("] [Block:"));
+  print_uint8_base10(BLOCK_BUFFER_SIZE);
   printPgmString(PSTR("]\r\n"));
 }
 
