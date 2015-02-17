@@ -30,7 +30,11 @@
 
 DEVICE     ?= atmega328p
 CLOCK      = 16000000
-PROGRAMMER ?= -c avrisp2 -P usb
+ifeq ($(OS),Windows_NT)
+  PROGRAMMER ?= -c arduino -P COM21 -b 115200 -D
+else
+  PROGRAMMER ?= -c avrisp2 -P usb -B 10
+endif
 SOURCE    = main.c motion_control.c gcode.c spindle_control.c coolant_control.c serial.c \
              protocol.c stepper.c eeprom.c settings.c planner.c nuts_bolts.c limits.c \
              print.c probe.c report.c system.c cpu_map.c
@@ -41,7 +45,7 @@ FUSES      = -U hfuse:w:0xd2:m -U lfuse:w:0xff:m
 
 # Tune the lines below only if you know what you are doing:
 
-AVRDUDE = avrdude $(PROGRAMMER) -p $(DEVICE) -B 10 -F
+AVRDUDE = avrdude $(PROGRAMMER) -p $(DEVICE)
 COMPILE = avr-gcc -Wall -Os -DF_CPU=$(CLOCK) -D$(DEVICE) -mmcu=$(DEVICE) -I. -ffunction-sections
 
 OBJECTS = $(addprefix $(BUILDDIR)/,$(notdir $(SOURCE:.c=.o)))
