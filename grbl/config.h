@@ -38,7 +38,7 @@
 
 // Default cpu mappings. Grbl officially supports the Arduino Uno only. Other processor types
 // may exist from user-supplied templates or directly user-defined in cpu_map.h
-#define CPU_MAP_ATMEGA2560_AZTEEGPRO // Arduino Uno CPU
+#define CPU_MAP_ATMEGA2560_RAMPS // mega 2560 and ramps (or azteegpro)
 //#define CPU_MAP_ATMEGA328P // Arduino Uno CPU
 
 // Define realtime command special characters. These characters are 'picked-off' directly from the
