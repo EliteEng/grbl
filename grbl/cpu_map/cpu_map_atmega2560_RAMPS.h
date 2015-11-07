@@ -134,10 +134,10 @@
 #define CONTROL_INVERT_MASK CONTROL_MASK // May be re-defined to only invert certain control pins.
 
   // Define probe switch input pin.
-#define PROBE_DDR       DDRK
-#define PROBE_PIN       PINK
-#define PROBE_PORT      PORTK
-#define PROBE_BIT       3  // MEGA2560 Analog Pin 11
+#define PROBE_DDR       DDRD
+#define PROBE_PIN       PIND
+#define PROBE_PORT      PORTD
+#define PROBE_BIT       3  // MEGA2560 Digital pin 18 (ZMIN)
 #define PROBE_MASK      (1<<PROBE_BIT)
 
   // Start of PWM & Stepper Enabled Spindle
